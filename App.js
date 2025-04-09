@@ -1,131 +1,428 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Button, Text, View, Alert, FlatList, TextInput, Linking } from 'react-native';
+import { Button, Text, View, Alert, FlatList, TextInput, Linking, ScrollView, StyleSheet } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import * as SecureStore from 'expo-secure-store';
+
+const BASE_URL = 'http://54.226.103.193:3010';
 
 const Stack = createNativeStackNavigator();
 
+// Simplified styles
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: '#F8F9FA',
+  },
+  header: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    padding: 10,
+    marginBottom: 15,
+    width: '100%',
+  },
+  jobItem: {
+    padding: 10,
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    width: '100%',
+  },
+  section: {
+    marginTop: 15,
+    marginBottom: 5,
+    fontWeight: 'bold',
+  }
+});
+
 // HomeScreen component
 const HomeScreen = ({ navigation }) => (
-  <View>
-    <Text>Welcome to the Job Board</Text>
-    <Button title="Go to Jobs Screen" onPress={() => navigation.navigate('Jobs')} />
+  <View style={styles.container}>
+    <Text style={styles.header}>Welcome to the Job Board</Text>
+    <Button title="Jobs Screen" onPress={() => navigation.navigate('Jobs')} />
+    <Button title="Saved Jobs" onPress={() => navigation.navigate('SavedJobs')} />
+    <Button title="Sign In" onPress={() => navigation.navigate('SignIn')} />
+    <Button title="Sign Up" onPress={() => navigation.navigate('SignUp')} />
     <StatusBar style="auto" />
   </View>
 );
 
-// JobsScreen component
+// JobsScreen component - simplified
 const JobsScreen = ({ navigation }) => {
   const [jobs, setJobs] = useState([]);
-  const [filteredJobs, setFilteredJobs] = useState([]);
-  const [cityFilter, setCityFilter] = useState('');
 
   useEffect(() => {
-    const fetchJobs = async () => {
-      try {
-        const res = await fetch('https://d903-2001-bb6-9f03-52e8-3c80-5a0d-803a-9dee.ngrok-free.app/jobs');
-        const data = await res.json();
+    fetch(`${BASE_URL}/jobs`)
+      .then(res => res.json())
+      .then(data => {
         if (data.jobs) {
           setJobs(data.jobs);
-          setFilteredJobs(data.jobs); // Set both jobs and filtered jobs initially
         } else {
           Alert.alert('Error', 'No jobs found.');
         }
-      } catch {
+      })
+      .catch(() => {
         Alert.alert('Error', 'Failed to fetch jobs.');
-      }
-    };
-    fetchJobs();
+      });
   }, []);
 
-  const handleCityFilter = (city) => {
-    setCityFilter(city);
-    if (!city) {
-      setFilteredJobs(jobs); // Show all jobs if no city filter
-    } else {
-      const filtered = jobs.filter(job =>
-        job.location.city.toLowerCase().includes(city.toLowerCase())
-      );
-      setFilteredJobs(filtered); // Filter jobs based on city
-    }
-  };
-
   return (
-    <View>
-      <Text>Available Jobs</Text>
-      <TextInput
-        placeholder="Filter by city"
-        value={cityFilter}
-        onChangeText={handleCityFilter}
-        style={{ borderWidth: 1, marginBottom: 10, padding: 5 }}
-      />
+    <View style={styles.container}>
+      <Text style={styles.header}>Available Jobs</Text>
       <FlatList
-        data={filteredJobs}
+        data={jobs}
         renderItem={({ item }) => (
-          <View style={{ padding: 10, marginBottom: 10, borderBottomWidth: 1 }} onTouchEnd={() => navigation.navigate('JobDetails', { job: item })}>
+          <View
+            style={styles.jobItem}
+            onTouchEnd={() => navigation.navigate('JobDetails', { job: item })}
+          >
             <Text>{item.company} - {item.role}</Text>
             <Text>{item.location.city}</Text>
           </View>
         )}
         keyExtractor={(item) => item.id.toString()}
+        style={{ width: '100%' }}
       />
     </View>
   );
 };
 
-// JobDetails component
+// JobDetails component - simplified
 const JobDetails = ({ route }) => {
   const { job } = route.params;
-  const [fullJobDetails, setFullJobDetails] = useState(null);
+  const [details, setDetails] = useState(null);
 
   useEffect(() => {
-    const fetchJobDetails = async () => {
-      try {
-        const res = await fetch(`https://d903-2001-bb6-9f03-52e8-3c80-5a0d-803a-9dee.ngrok-free.app/jobs/${job.id}`);
-        const data = await res.json();
-        setFullJobDetails(data.job || {});
-      } catch {
-        console.error('Error fetching job details');
-      }
-    };
-    fetchJobDetails();
+    fetch(`${BASE_URL}/jobs/${job.id}`)
+      .then(res => res.json())
+      .then(data => {
+        setDetails(data.job);
+      })
+      .catch(err => {
+        console.error('Error fetching job details', err);
+      });
   }, [job.id]);
 
-  if (!fullJobDetails) return <Text>Loading...</Text>;
+  if (!details) return <Text>Loading...</Text>;
 
   return (
-    <View style={{ padding: 15 }}>
-      <Text style={{ fontSize: 18, fontWeight: 'bold' }}>Job Details</Text>
-      <Text>{fullJobDetails.company} - {fullJobDetails.role}</Text>
-      <Text>{fullJobDetails.location.city}, {fullJobDetails.location.country}</Text>
-      <Text>Type: {fullJobDetails.employment?.type || 'Not specified'}</Text>
-      <Text>Mode: {fullJobDetails.employment?.mode || 'Not specified'}</Text>
-      <Text>Skill Level: {fullJobDetails.employment?.level || 'Not specified'}</Text>
-      <Text>Experience: {fullJobDetails.employment?.minExperience || 'Not specified'} years</Text>
+    <ScrollView>
+      <Text style={styles.header}>{details.company} - {details.role}</Text>
+      <Text>{details.location.city}, {details.location.country}</Text>
+      <Text>Type: {details.employment?.type}</Text>
+      <Text>Mode: {details.employment?.mode}</Text>
 
-      <Text style={{ fontWeight: 'bold', marginTop: 15 }}>Description:</Text>
-      <Text>{fullJobDetails.description?.summary || 'No description available'}</Text>
+      <Text style={styles.section}>Description:</Text>
+      <Text>{details.description?.summary}</Text>
 
-      <Text style={{ fontWeight: 'bold', marginTop: 15 }}>Skills:</Text>
-      <Text>{fullJobDetails.skills?.required?.join(', ') || 'Not specified'}</Text>
-      <Text>{fullJobDetails.skills?.languages?.join(', ') || 'Not specified'}</Text>
-      <Text>{fullJobDetails.skills?.technologies?.join(', ') || 'Not specified'}</Text>
+      <Text style={styles.section}>Skills:</Text>
+      <Text>{details.skills?.required?.join(', ')}</Text>
 
-      <Text style={{ fontWeight: 'bold', marginTop: 15 }}>Educational Requirements:</Text>
-      <Text>{fullJobDetails.description?.requirements || 'Not specified'}</Text>
+      <Text style={styles.section}>Languages:</Text>
+      <Text>{details.skills?.languages?.join(', ')}</Text>
 
-      {fullJobDetails.urls?.linkedin && (
-        <Button title="Apply on LinkedIn" onPress={() => Linking.openURL(fullJobDetails.urls.linkedin)} color="#0077B5" />
+      {details.urls?.linkedin && (
+        <Button
+          title="Apply on LinkedIn"
+          onPress={() => Linking.openURL(details.urls.linkedin)}
+        />
       )}
-      {fullJobDetails.urls?.alternative && (
-        <Button title="Apply on Company Website" onPress={() => Linking.openURL(fullJobDetails.urls.alternative)} color="#4CAF50" />
-      )}
+
+      <SaveJobButton jobId={job.id} />
+    </ScrollView>
+  );
+};
+
+// SignInScreen - simplified but keeping the real authentication
+const SignInScreen = ({ navigation }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
+  const handleSignIn = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/signin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        await SecureStore.setItemAsync('userToken', data.token);
+        navigation.navigate('Home');
+        Alert.alert('Success', 'Signed in successfully!');
+      } else {
+        Alert.alert('Error', data.error || 'Invalid credentials');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Something went wrong.');
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.header}>Sign In</Text>
+      <TextInput
+        style={styles.input}
+        value={username}
+        onChangeText={setUsername}
+        placeholder="Username"
+      />
+      <TextInput
+        style={styles.input}
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Password"
+        secureTextEntry
+      />
+      <Button title="Sign In" onPress={handleSignIn} />
     </View>
   );
 };
 
-// App component with navigation setup
+// SignUpScreen - simplified
+const SignUpScreen = ({ navigation }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
+  const handleSignUp = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        Alert.alert('Success', 'Account created successfully!');
+        navigation.navigate('SignIn');
+      } else {
+        Alert.alert('Error', data.error || 'Failed to create account');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Something went wrong.');
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.header}>Sign Up</Text>
+      <TextInput
+        style={styles.input}
+        value={username}
+        onChangeText={setUsername}
+        placeholder="Username"
+      />
+      <TextInput
+        style={styles.input}
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Password"
+        secureTextEntry
+      />
+      <Button title="Sign Up" onPress={handleSignUp} />
+    </View>
+  );
+};
+
+// SaveJobButton - simplified
+const SaveJobButton = ({ jobId }) => {
+  const [status, setStatus] = useState(null);
+
+  const handleSave = async () => {
+    const token = await SecureStore.getItemAsync('userToken');
+
+    if (!token) {
+      Alert.alert('Error', 'You must be signed in to save jobs.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${BASE_URL}/save-jobs/${jobId}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setStatus('Job saved!');
+      } else {
+        setStatus('Failed to save job.');
+      }
+    } catch (err) {
+      setStatus('An error occurred.');
+    }
+  };
+
+  return (
+    <View style={{ marginTop: 20 }}>
+      <Button title="Save Job" onPress={handleSave} />
+      {status && <Text style={{ marginTop: 10 }}>{status}</Text>}
+    </View>
+  );
+};
+
+// SavedJobsScreen 
+const SavedJobsScreen = ({ navigation }) => {
+  const [savedJobs, setSavedJobs] = useState([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const fetchSavedJobs = async () => {
+        const token = await SecureStore.getItemAsync('userToken');
+        if (!token) {
+          Alert.alert('Error', 'You must be signed in to view saved jobs.');
+          return;
+        }
+
+        try {
+          const response = await fetch(`${BASE_URL}/saved-jobs`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          const data = await response.json();
+          if (response.ok && data.success) {
+            setSavedJobs(data.jobs);
+          } else {
+            Alert.alert('Error', data.error || 'Failed to fetch saved jobs');
+          }
+        } catch (err) {
+          Alert.alert('Error', 'Server error');
+        }
+      };
+
+      fetchSavedJobs();
+    }, [])
+  );
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.header}>Saved Jobs</Text>
+      <FlatList
+        data={savedJobs}
+        renderItem={({ item }) => (
+          <View
+            style={styles.jobItem}
+            onTouchEnd={() => navigation.navigate('SavedJobDetails', { job: item })}
+          >
+            <Text>{item.company} - {item.role}</Text>
+            <Text>{item.location.city}</Text>
+          </View>
+        )}
+        keyExtractor={(item) => item.id.toString()}
+        style={{ width: '100%' }}
+      />
+    </View>
+  );
+};
+
+const SavedJobDetails = ({ route, navigation }) => {
+  const { job } = route.params;
+  const [details, setDetails] = useState(null);
+
+  useEffect(() => {
+    fetch(`${BASE_URL}/jobs/${job.id}`)
+      .then(res => res.json())
+      .then(data => setDetails(data.job))
+      .catch(err => console.error('Error fetching job details', err));
+  }, [job.id]);
+
+  if (!details) return <Text>Loading...</Text>;
+
+  return (
+    <ScrollView>
+      <Text style={styles.header}>{details.company} - {details.role}</Text>
+      <Text>{details.location.city}, {details.location.country}</Text>
+      <Text>Type: {details.employment?.type}</Text>
+      <Text>Mode: {details.employment?.mode}</Text>
+
+      <Text style={styles.section}>Description:</Text>
+      <Text>{details.description?.summary}</Text>
+
+      <Text style={styles.section}>Skills:</Text>
+      <Text>{details.skills?.required?.join(', ')}</Text>
+
+      <Text style={styles.section}>Languages:</Text>
+      <Text>{details.skills?.languages?.join(', ')}</Text>
+
+      {details.urls?.linkedin && (
+        <Button
+          title="Apply on LinkedIn"
+          onPress={() => Linking.openURL(details.urls.linkedin)}
+        />
+      )}
+
+      <DeleteSavedJobButton jobId={job.id} navigation={navigation} />
+    </ScrollView>
+  );
+};
+
+const DeleteSavedJobButton = ({ jobId, navigation }) => {
+  const [status, setStatus] = useState(null);
+
+  const handleDelete = async () => {
+    const token = await SecureStore.getItemAsync('userToken');
+    if (!token) {
+      Alert.alert('Error', 'You must be signed in.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/saved-jobs/${jobId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setStatus('Removed');
+        Alert.alert('Removed', 'Job removed from saved jobs.', [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]);
+      } else {
+        setStatus('Failed to remove');
+      }
+    } catch (err) {
+      console.error('Remove job error:', err);
+      setStatus('Error occurred');
+    }
+  };
+
+  return (
+    <View style={{ marginTop: 20 }}>
+      <Button
+        title="Remove from Saved"
+        color="tomato"
+        onPress={handleDelete}
+      />
+      {status && <Text style={{ marginTop: 10 }}>{status}</Text>}
+    </View>
+  );
+};
+
+// App Navigation
 export default function App() {
   return (
     <NavigationContainer>
@@ -133,6 +430,10 @@ export default function App() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Jobs" component={JobsScreen} />
         <Stack.Screen name="JobDetails" component={JobDetails} />
+        <Stack.Screen name="SignIn" component={SignInScreen} />
+        <Stack.Screen name="SignUp" component={SignUpScreen} />
+        <Stack.Screen name="SavedJobs" component={SavedJobsScreen} />
+        <Stack.Screen name="SavedJobDetails" component={SavedJobDetails} />
       </Stack.Navigator>
     </NavigationContainer>
   );
